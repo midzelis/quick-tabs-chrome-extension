@@ -350,7 +350,16 @@ function drawCurrentTabs() {
    * since this can be updated after pages have loaded
    */
   chrome.tabs.query({}, function(queryResultTabs) {
-
+debugger;
+    for(let a =0;a< queryResultTabs.length;a++) {
+      chrome.tabs.executeScript(queryResultTabs[a].id, {
+        code: "document.body.style.backgroundColor='red';var foo='my result';foo;"
+      }, 
+      function(results) {
+        console.log(results);
+        debugger;
+      });
+    }
     // assign the cleaned tabs list back to background.js
     bg.tabs = compareTabArrays(bg.tabs, queryResultTabs);
 
