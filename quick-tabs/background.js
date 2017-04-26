@@ -479,6 +479,15 @@ function setupBookmarks() {
   });
 }
 
+var _portResolve;
+var portPromise = new Promise(function( resolve, reject) {
+        _portResolve = function() {
+            portPromise.done = true; 
+            resolve.apply(this,arguments);
+        };
+});
+portPromise.done = false;
+
 function init() {
 
   // reset the extension state
@@ -592,7 +601,9 @@ function init() {
       });
     }
   });
-
+  
+  chrome.runtime.onConnectExternal.addListener(_portResolve);
+  
   chrome.bookmarks.onCreated.addListener(function() {setupBookmarks()});
   chrome.bookmarks.onRemoved.addListener(function() {setupBookmarks()});
   chrome.bookmarks.onChanged.addListener(function() {setupBookmarks()});

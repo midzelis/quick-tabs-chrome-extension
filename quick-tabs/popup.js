@@ -344,33 +344,39 @@ $(document).ready(function() {
 
 });
 
-function drawCurrentTabs() {
+function prepRender(consoleTabs) {
   /**
-   * This seems kinda nasty but it ensures that we are rendering the latest title information for the tabs
-   * since this can be updated after pages have loaded
-   */
-  chrome.tabs.query({}, function(queryResultTabs) {
-debugger;
-    for(let a =0;a< queryResultTabs.length;a++) {
-      chrome.tabs.executeScript(queryResultTabs[a].id, {
-        code: "document.body.style.backgroundColor='red';var foo='my result';foo;"
-      }, 
-      function(results) {
-        console.log(results);
-        debugger;
-      });
-    }
-    // assign the cleaned tabs list back to background.js
-    bg.tabs = compareTabArrays(bg.tabs, queryResultTabs);
+     * This seems kinda nasty but it ensures that we are rendering the latest title information for the tabs
+     * since this can be updated after pages have loaded
+     */
+    chrome.tabs.query({}, function(queryResultTabs) {
 
-    // render only the tabs and closed tabs on initial load (hence the empty array [] for bookmarks)
-    // also drop the first entry since that's the current tab =)
-    renderTabs({
-      allTabs: bg.tabs.slice(1),
-      closedTabs: bg.closedTabs,
-      bookmarks: []
+      // assign the cleaned tabs list back to background.js
+      bg.tabs = compareTabArrays(bg.tabs, queryResultTabs);
+
+      // render only the tabs and closed tabs on initial load (hence the empty array [] for bookmarks)
+      // also drop the first entry since that's the current tab =)
+      renderTabs({
+        allTabs: bg.tabs.slice(1),
+        closedTabs: bg.closedTabs,
+        bookmarks: [],
+        consoleTabs: consoleTabs
+      });
     });
-  });
+}
+function drawCurrentTabs() {
+
+  if (bg.portPromise.done) {
+        bg.portPromise.then( port => {
+          port.onMessage.addListener(function(response, sender) {
+            prepRender(response.response);
+          });
+          port.postMessage({name: "getAllTabInfo", args: []});
+      });
+  } else {
+        prepRender();
+  }
+  
 }
 
 function renderTabs(params) {
@@ -387,6 +393,22 @@ function renderTabs(params) {
     return obj;
   });
 
+  var consoleTabs = (params.consoleTabs || []).map(function(obj){
+    obj.templateTabImage = "/assets/console_icon.png";
+    obj.templateTitle = encodeHTMLSource(obj.title);
+    obj.templateUrl = encodeHTMLSource(obj.displayUrl || obj.url);
+
+    var subTabs = (obj.subtabs || []).map(function(obj){
+      obj.templateTabImage = "/assets/console_icon.png";
+      obj.templateTitle = encodeHTMLSource(obj.title);
+      obj.templateUrl = encodeHTMLSource(obj.displayUrl || obj.url);
+      return obj;
+    });
+    obj.subtabs = subTabs;
+    
+    return obj;
+  });
+  
   var closedTabs = (params.closedTabs || []).map(function(obj){
     obj.templateTabImage = tabImage(obj);
     obj.templateTitle = encodeHTMLSource(obj.title);
@@ -412,6 +434,7 @@ function renderTabs(params) {
   var context = {
     'type': params.type || "all",
     'tabs': allTabs,
+    'consoleTabs': consoleTabs,
     'closedTabs': closedTabs,
     'bookmarks': bookmarks,
     'history': history,
@@ -420,10 +443,11 @@ function renderTabs(params) {
     'urlStyle': bg.showUrls() ? "" : "nourl",
     'urls': bg.showUrls(),
     'tips': bg.showTooltips(),
-    'noResults': allTabs.length == 0 && closedTabs.length == 0 && bookmarks.length == 0 && history.length == 0,
+    'noResults': allTabs.length == 0 && closedTabs.length == 0 && bookmarks.length == 0 && history.length == 0 && consoleTabs.length == 0,
     'hasClosedTabs': closedTabs.length > 0,
     'hasBookmarks': bookmarks.length > 0,
-    'hasHistory': history.length > 0
+    'hasHistory': history.length > 0,
+    'hasConsoleTabs': consoleTabs.length > 0
   };
 
   // render the templates
@@ -434,6 +458,20 @@ function renderTabs(params) {
   focusFirst();
 
   $('.open').on('click', function() {
+    if (this.classList.contains("console")) {
+      //TODO: handle multiple console browser tabs
+      // just go digging for it now
+      for(let i=0;i<bg.tabs.length;i++) {
+         if (isConsoleUrl(bg.tabs[i].url)) {
+            let ctab = this.id;
+            bg.switchTabsWithoutDelay(parseInt(bg.tabs[i].id), function() {
+                closeWindow();
+                bg.portPromise.then( port => port.postMessage({name: "focusTab", args: [ctab]}));
+            });
+         }
+      }
+      return;
+    } 
     bg.switchTabsWithoutDelay(parseInt(this.id), function() {
       closeWindow();
     });
@@ -454,12 +492,82 @@ function renderTabs(params) {
     openInNewTab(this.getAttribute('data-path'));
   });
 
-  $('.close').on('click', function() {
+  $('.close').on('click', function(event) {
+    if (this.classList.contains("console")) {
+        event.preventDefault();
+        //TODO: handle multiple console browser tabs
+        // just go digging for it now
+        for(let i=0;i<bg.tabs.length;i++) {
+          if (isConsoleUrl(bg.tabs[i].url)) {
+              let ctab = this.id.slice(1);
+              bg.switchTabsWithoutDelay(parseInt(bg.tabs[i].id), function() {
+                   //closeWindow();
+                  bg.portPromise.then( port => port.postMessage({name: "closeTab", args: [ctab]}));
+              });
+          } 
+        }
+        return;
+      } 
     closeTabs([parseInt(this.id.substring(1))])
   });
 
   pageTimer.log("tab template rendered");
 }
+
+
+function getUrlPath(url) {
+    return new URL(url).pathname;
+}
+
+function checkRegExps(str, regExps, startsWith) {
+    for(var i = 0; i < regExps.length; i++) {
+        var re = regExps[i];
+        if (startsWith) re = "^" + re;
+        if (new RegExp(re).test(str)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function hashStartsWithRegExps(url,regExps) {
+    var path = new URL(url).hash;
+    if(path.length > 0){
+        return checkRegExps(path.substring(1), regExps, true);
+    }
+    return false;
+}
+
+function startsWithRegExps(url,regExps) {
+    var path = getUrlPath(url);
+    return checkRegExps(path, regExps, true);
+}
+
+function checkFullPathRegexps(url) {
+    var path = getUrlPath(url);
+    var fullpath = url.substring(url.indexOf(path), url.length);
+    return checkRegExps(fullpath, fullpathRegexps, false);
+}
+
+//Check if we are a potential console application url
+function isConsoleUrl(url) {
+    //TODO I'm cheating here. The real solution is to look at appContextId in sessionStorage
+    //and associate that value with an appNavType (probably by querying DOM for consoleLayoutContainer)
+    //Then cache those values in the plugin and refer back to them here on subsequent lightning page loads
+    if(startsWithRegExps(url, ["/one/one.app"]) && !ignoreUrl(url)){
+        return true;
+    }
+    return false; //We aren't a lightning app so can't be a console
+}
+// URLs to simply not touch
+function ignoreUrl(url) {
+    if (startsWithRegExps(url,["/005\\w"])) return url.indexOf("noredirect=1") > -1;
+    return checkFullPathRegexps(url) || startsWithRegExps(url, ignoreUrls) || hashStartsWithRegExps(url, ignoreUrls);
+}
+//URLs that should be skipped or avoided
+var ignoreUrls = ["/$", "/console", "/setup", "/contenthub/openintarget", "/saml", "/qa", "/jslibrary", "/content/session",
+    "/ui", "/layouteditor", "/apexpages", "/secur","/home/home.jsp",".*page/timeoutwarn.jsp"];
+var fullpathRegexps = ["\\btsid="];
 
 /**
  * listen to the background page for key presses and trigger the appropriate responses

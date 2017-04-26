@@ -33,6 +33,14 @@ body {
   line-height: 1.25;
 }
 
+.console {
+  background-color: #5eb4ff;
+}
+
+.subtab {
+  padding-left: 2em;
+}
+
 .qs_input {
   font-size: 12px;
   font-family: "Lucida Grande", Lucida, Verdana, sans-serif;

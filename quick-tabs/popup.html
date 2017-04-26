@@ -50,6 +50,31 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     </div>
   {{/noResults}}
 
+  {{#consoleTabs}}
+    <div class="item tab open console {{urlStyle}}" id="{{tabId}}">
+      <div class="{{tabImageStyle}}">
+        <img src="{{templateTabImage}}" width="16" height="16" border="0">
+      </div>
+      <div>
+        <div class="close console" id="c{{tabId}}" title="{{closeTitle}}"></div>
+        <div class="title"{{#tips}} title="{{{templateTitle}}}"{{/tips}}>{{{templateTitle}}}</div>
+        {{#urls}}<div class="url">{{{templateUrl}}}</div>{{/urls}}
+      </div>
+    </div>
+      {{#subtabs}}
+        <div class="item tab open console subtab {{urlStyle}}" id="{{tabId}}">
+          <div class="{{tabImageStyle}}">
+            <img src="{{templateTabImage}}" width="16" height="16" border="0">
+          </div>
+          <div>
+            <div class="close console" id="c{{tabId}}" title="{{closeTitle}}"></div>
+            <div class="title"{{#tips}} title="{{{templateTitle}}}"{{/tips}}>{{{templateTitle}}}</div>
+            {{#urls}}<div class="url">{{{templateUrl}}}</div>{{/urls}}
+          </div>
+        </div>
+      {{/subtabs}}
+  {{/consoleTabs}}
+
   {{#tabs}}
     <div class="item tab open {{urlStyle}}" id="{{id}}">
       <div class="{{tabImageStyle}}">
